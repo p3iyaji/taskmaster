@@ -43,7 +43,7 @@ class TodoListPolicy
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, TodoList $todoList): bool
+    public function destroy(User $user, TodoList $todoList): bool
     {
         return $user->id === $todoList->user_id;
     }

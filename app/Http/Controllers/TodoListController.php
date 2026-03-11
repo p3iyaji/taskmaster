@@ -7,17 +7,23 @@ use App\Models\TodoList;
 use App\Models\Task;
 use Inertia\Inertia;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Facades\Cache;
 
 class TodoListController extends Controller
 {
     use AuthorizesRequests;
     public function index()
     {
-        $todoLists = TodoList::with('user')
-            ->select(['id', 'name', 'color', 'user_id'])
-            ->withCount('tasks')
-            ->latest()
-            ->get();
+        $todoLists = Cache::tags(['todolists'])
+            ->remember('index', 60, function () {
+                return TodoList::with('user')
+                    ->select(['id', 'name', 'color', 'user_id'])
+                    ->withCount('tasks')
+                    ->latest()
+                    ->get();
+            });
+
+
 
         return Inertia::render('TodoLists/Index', [
             'todoLists' => $todoLists,
@@ -66,7 +72,6 @@ class TodoListController extends Controller
 
     public function destroy(TodoList $todoList)
     {
-        $this->authorize('delete', $todoList);
 
         try {
             $tasksCount = $todoList->tasks()->count();

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm, router } from '@inertiajs/vue3';
 import { Pencil, Trash2, Plus } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 
 import {
     AlertDialog,
@@ -48,6 +48,24 @@ const props = defineProps<{
     todoLists: TodoList[];
 }>();
 
+// Fix the setInterval implementation
+let pollingInterval: ReturnType<typeof setInterval> | null = null;
+
+// Start polling when component mounts
+onMounted(() => {
+    pollingInterval = setInterval(() => {
+        router.reload({ only: ['todoLists'] });
+    }, 10000);
+});
+
+// Clean up interval when component unmounts
+onUnmounted(() => {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+    }
+});
+
 const isCreateDialogOpen = ref(false);
 const isEditDialogOpen = ref(false);
 const deletingList = ref<number | null>(null);
@@ -62,6 +80,7 @@ const handleCreate = () => {
     form.post('/todo-lists', {
         onSuccess: () => {
             isCreateDialogOpen.value = false;
+            // router.reload({ only: ['todoLists'] });
             form.reset();
         },
     });
@@ -81,6 +100,7 @@ const handleUpdate = () => {
         onSuccess: () => {
             isEditDialogOpen.value = false;
             editingList.value = null;
+            //router.reload({ only: ['todoLists'] });
             form.reset();
         },
     });
