@@ -18,7 +18,7 @@ return new class extends Migration
             $table->enum('priority', ['low', 'medium', 'high'])->default('medium');
             $table->boolean('completed')->default(false);
             $table->foreignId('todo_list_id')->constrained('todo_lists');
-
+            $table->foreignId('assignee_id')->nullable()->constrained()->cascadeOnDelete();
             $table->timestamps();
         });
     }

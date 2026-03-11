@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\User;
 use App\Models\Task;
 use App\Models\TodoList;
 use Inertia\Inertia;
@@ -11,13 +12,17 @@ class TaskController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Task::with('todoList')->latest();
+        $query = Task::with('todoList', 'assignee')->latest();
 
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhereHas('assignee', function ($q2) use ($search) {
+                        $q2->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
             });
         }
 
@@ -31,13 +36,16 @@ class TaskController extends Controller
         }
 
         $tasks = $query->paginate(10)->withQueryString();
+        $assignees = User::select(['id', 'name', 'email'])->get();
 
         $todoLists = TodoList::select(['id', 'name', 'color'])->get();
+        $users = User::select(['id', 'name', 'email'])->get();
 
         return Inertia::render('Tasks/Index', [
             'tasks' => $tasks,
             'filters' => $request->only('search', 'priority', 'listId'), // Change this too
             'todoLists' => $todoLists,
+            'assignees' => $assignees,
         ]);
     }
 
@@ -49,6 +57,7 @@ class TaskController extends Controller
             'description' => ['nullable', 'string', 'max:255'],
             'priority' => ['nullable', 'string', 'max:16'],
             'completed' => ['nullable', 'boolean'],
+            'assignee_id' => ['nullable', 'exists:users,id'],
         ]);
 
         $validated['completed'] = $request->boolean('completed', false);
@@ -61,6 +70,7 @@ class TaskController extends Controller
 
     public function show(Task $task)
     {
+
         return Inertia::render('Tasks/Show', [
             'task' => $task,
         ]);
@@ -74,6 +84,7 @@ class TaskController extends Controller
             'description' => ['nullable', 'string', 'max:255'],
             'priority' => ['nullable', 'string', 'max:16'],
             'completed' => ['nullable', 'boolean'],
+            'assignee_id' => ['nullable', 'exists:users,id'],
         ]);
 
         $task->update($validated);

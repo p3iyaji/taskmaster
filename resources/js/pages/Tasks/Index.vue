@@ -33,6 +33,7 @@ import {
     AlertDialogCancel,
     AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+
 import { Checkbox } from '@/components/ui/checkbox';
 
 import type { BreadcrumbItem } from '@/types';
@@ -43,6 +44,12 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: dashboard() },
     { title: 'Tasks', href: '/tasks' },
 ];
+
+interface User {
+    id: number;
+    name: string;
+    email: string;
+}
 
 interface Task {
     id: number;
@@ -57,6 +64,8 @@ interface Task {
         color?: string;
     };
     todo_list_id: number;
+    assignee_id: number;
+    assignee: User;
 }
 
 interface TodoList {
@@ -88,11 +97,12 @@ const props = defineProps<{
         listId: number | null;
     };
     todoLists: TodoList[];
+    assignees: User[];
 }>();
 
 const isCreateDialogOpen = ref(false);
 const isEditDialogOpen = ref(false);
-const isDeleteDialogOpen = ref(false);
+const deletingTask = ref<{ id: number } | null>(null);
 const search = ref(props.filters.search || '');
 const priority = ref(props.filters.priority || '');
 const listId = ref(props.filters.listId || '');
@@ -109,6 +119,12 @@ const form = useForm<Task>({
         id: 0,
         name: '',
         color: '#6366f1',
+    },
+    assignee_id: 0,
+    assignee: {
+        id: 0,
+        name: '',
+        email: '',
     },
 });
 
@@ -130,6 +146,8 @@ const handleEdit = (task: Task) => {
     form.completed = task.completed;
     form.todo_list_id = task.todo_list_id;
     form.todo_list = task.todo_list;
+    form.assignee_id = task.assignee_id;
+    form.assignee = task.assignee;
 };
 
 const handleUpdate = () => {
@@ -164,6 +182,15 @@ const clearFilters = () => {
     search.value = '';
     priority.value = '';
     listId.value = '';
+};
+
+const handleDelete = (task: Task) => {
+    deletingTask.value = { id: task.id };
+    form.delete(`/tasks/${task.id}`, {
+        onSuccess: () => {
+            deletingTask.value = null;
+        },
+    });
 };
 </script>
 
@@ -275,7 +302,28 @@ const clearFilters = () => {
                                         :message="form.errors.todo_list_id"
                                     />
                                 </div>
-
+                                <div class="space-y-2">
+                                    <Label for="assignee_id">Assignee</Label>
+                                    <select
+                                        id="assignee_id"
+                                        v-model="form.assignee_id"
+                                        class="w-full rounded-md border border-gray-300 p-2"
+                                    >
+                                        <option value="">
+                                            Select Assignee
+                                        </option>
+                                        <option
+                                            v-for="user in assignees"
+                                            :key="user.id"
+                                            :value="user.id"
+                                        >
+                                            {{ user.name }}
+                                        </option>
+                                    </select>
+                                    <InputError
+                                        :message="form.errors.assignee_id"
+                                    />
+                                </div>
                                 <div class="space-y-2">
                                     <Label for="priority">Priority</Label>
                                     <select
@@ -345,7 +393,7 @@ const clearFilters = () => {
                             <th class="px-4 py-2">Priority</th>
                             <th class="px-4 py-2">List</th>
                             <th class="px-4 py-2">Completed</th>
-
+                            <th class="px-4 py-2">Assignee</th>
                             <th class="px-4 py-2">Actions</th>
                         </tr>
                     </thead>
@@ -382,6 +430,9 @@ const clearFilters = () => {
                                 {{ task.completed ? 'Yes' : 'No' }}
                             </td>
                             <td class="px-4 py-2">
+                                {{ task.assignee?.name }}
+                            </td>
+                            <td class="px-4 py-2">
                                 <Dialog v-model:open="isEditDialogOpen">
                                     <DialogTrigger as-child>
                                         <Button
@@ -390,7 +441,7 @@ const clearFilters = () => {
                                             class="mr-2"
                                             @click="handleEdit(task)"
                                         >
-                                            <Pencil class="h-4 w-4" /> Edit
+                                            <Pencil class="h-4 w-4" />
                                         </Button>
                                     </DialogTrigger>
                                     <DialogContent>
@@ -400,10 +451,66 @@ const clearFilters = () => {
                                                 Edit the task details
                                             </DialogDescription>
                                         </DialogHeader>
-                                        <form
-                                            @submit.prevent="handleUpdate(task)"
-                                        >
+                                        <form @submit.prevent="handleUpdate()">
                                             <div class="space-y-4 py-4">
+                                                <div class="space-y-2">
+                                                    <Label for="assignee_id"
+                                                        >Assignee</Label
+                                                    >
+                                                    <select
+                                                        id="assignee_id"
+                                                        v-model="
+                                                            form.assignee_id
+                                                        "
+                                                        class="w-full rounded-md border border-gray-300 p-2"
+                                                    >
+                                                        <option value="">
+                                                            Select Assignee
+                                                        </option>
+                                                        <option
+                                                            v-for="user in assignees"
+                                                            :key="user.id"
+                                                            :value="user.id"
+                                                        >
+                                                            {{ user.name }}
+                                                        </option>
+                                                    </select>
+                                                    <InputError
+                                                        :message="
+                                                            form.errors
+                                                                .assignee_id
+                                                        "
+                                                    />
+                                                </div>
+                                                <div class="space-y-2">
+                                                    <Label for="todo_list_id"
+                                                        >Todo List</Label
+                                                    >
+                                                    <select
+                                                        id="todo_list_id"
+                                                        v-model="
+                                                            form.todo_list_id
+                                                        "
+                                                        class="w-full rounded-md border border-gray-300 p-2"
+                                                    >
+                                                        <option value="">
+                                                            Select Todo List
+                                                        </option>
+                                                        <option
+                                                            v-for="todoList in todoLists"
+                                                            :key="todoList.id"
+                                                            :value="todoList.id"
+                                                        >
+                                                            {{ todoList.name }}
+                                                        </option>
+                                                    </select>
+                                                    <InputError
+                                                        :message="
+                                                            form.errors
+                                                                .todo_list_id
+                                                        "
+                                                    />
+                                                </div>
                                                 <div class="space-y-2">
                                                     <Label for="title"
                                                         >Task Title</Label
@@ -500,9 +607,50 @@ const clearFilters = () => {
                                     </DialogContent>
                                 </Dialog>
 
-                                <Button variant="outline" size="sm">
-                                    <Trash2 class="h-4 w-4" /> Delete
-                                </Button>
+                                <AlertDialog>
+                                    <AlertDialogTrigger as-child>
+                                        <Button variant="outline" size="icon">
+                                            <Trash2 class="h-4 w-4" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle
+                                                >Are you sure?</AlertDialogTitle
+                                            >
+                                            <AlertDialogDescription>
+                                                This action cannot be undone.
+                                                This will permanently delete "{{
+                                                    task.title
+                                                }}" and all its tasks.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel
+                                                >Cancel</AlertDialogCancel
+                                            >
+                                            <AlertDialogAction
+                                                @click="handleDelete(task)"
+                                                :disabled="
+                                                    deletingTask?.id === task.id
+                                                "
+                                            >
+                                                <Loader2
+                                                    v-if="
+                                                        deletingTask?.id ===
+                                                        task.id
+                                                    "
+                                                    class="mr-2 h-4 w-4 animate-spin"
+                                                />
+                                                {{
+                                                    deletingTask?.id === task.id
+                                                        ? 'Deleting...'
+                                                        : 'Delete'
+                                                }}
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             </td>
                         </tr>
                     </tbody>

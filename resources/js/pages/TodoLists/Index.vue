@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -29,13 +29,26 @@ import {
 import InputError from '@/components/InputError.vue';
 import { type BreadcrumbItem } from '@/types';
 import { dashboard } from '@/routes';
-import { Plus, Pencil, Trash2, ExternalLink, Loader2 } from 'lucide-vue-next';
+import {
+    Plus,
+    Pencil,
+    Trash2,
+    ExternalLink,
+    Loader2,
+    Eye,
+} from 'lucide-vue-next';
 import { ref } from 'vue';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: dashboard() },
     { title: 'Todo Lists', href: '/todo-lists' },
 ];
+
+interface User {
+    id: number;
+    name: string;
+    email: string;
+}
 
 interface List {
     id: number;
@@ -54,6 +67,10 @@ interface TodoLists {
 const props = defineProps({
     todoLists: {
         type: Array<TodoLists>,
+        required: true,
+    },
+    users: {
+        type: Array<User>,
         required: true,
     },
 });
@@ -114,6 +131,14 @@ const handleDelete = (todoList: TodoLists) => {
             deletingList.value = null;
             form.reset();
         },
+    });
+};
+
+const handleView = (todoList: TodoLists) => {
+    router.get(`/todo-lists/${todoList.id}`, {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
     });
 };
 </script>
@@ -210,9 +235,18 @@ const handleDelete = (todoList: TodoLists) => {
                 <Card v-for="todoList in todoLists" :key="todoList.id">
                     <CardHeader>
                         <CardTitle class="flex items-center justify-between">
-                            <span>{{ todoList.name }}</span>
+                            <Link :href="`/tasks?listId=${todoList.id}`">
+                                <span>{{ todoList.name }}</span></Link
+                            >
 
                             <div class="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    @click="handleView(todoList)"
+                                >
+                                    <Eye class="h-4 w-4" />
+                                </Button>
                                 <Button
                                     variant="outline"
                                     size="sm"
