@@ -1,27 +1,11 @@
 <script setup lang="ts">
-import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { watchDebounced } from '@vueuse/core';
+import { Search, X, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { Plus, Pencil, Trash2, Loader2 } from 'lucide-vue-next';
 import { ref } from 'vue';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import InputError from '@/components/InputError.vue';
-import { Search, List, Check, X } from 'lucide-vue-next';
 
-import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
-import { Plus, Pencil, Trash2, ExternalLink, Loader2 } from 'lucide-vue-next';
-
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogTrigger,
-} from '@/components/ui/dialog';
 import {
     AlertDialog,
     AlertDialogContent,
@@ -33,16 +17,37 @@ import {
     AlertDialogCancel,
     AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogTrigger,
+    DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import AppLayout from '@/layouts/AppLayout.vue';
 
-import type { BreadcrumbItem } from '@/types';
 import { dashboard } from '@/routes';
-import { watchDebounced } from '@vueuse/core';
+import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: dashboard() },
     { title: 'Tasks', href: '/tasks' },
 ];
+
+interface User {
+    id: number;
+    name: string;
+    email: string;
+}
 
 interface Task {
     id: number;
@@ -57,6 +62,8 @@ interface Task {
         color?: string;
     };
     todo_list_id: number;
+    assignee_id: number | null;
+    assignee: User | null;
 }
 
 interface TodoList {
@@ -88,40 +95,44 @@ const props = defineProps<{
         listId: number | null;
     };
     todoLists: TodoList[];
+    assignees: User[];
 }>();
 
 const isCreateDialogOpen = ref(false);
 const isEditDialogOpen = ref(false);
-const isDeleteDialogOpen = ref(false);
+const deletingTask = ref<number | null>(null);
+const editingTask = ref<Task | null>(null);
 const search = ref(props.filters.search || '');
 const priority = ref(props.filters.priority || '');
 const listId = ref(props.filters.listId || '');
 
-const form = useForm<Task>({
+const form = useForm({
     id: 0,
     title: '',
     description: '',
-    priority: 'medium',
+    priority: 'medium' as 'low' | 'medium' | 'high',
     completed: false,
     todo_list_id: 0,
-    created_at: new Date().toISOString(),
-    todo_list: {
-        id: 0,
-        name: '',
-        color: '#6366f1',
-    },
+    assignee_id: null as number | null,
 });
+
+const resetForm = () => {
+    form.reset();
+    form.assignee_id = null;
+    form.todo_list_id = 0;
+};
 
 const handleCreate = () => {
     form.post('/tasks', {
         onSuccess: () => {
             isCreateDialogOpen.value = false;
-            form.reset();
+            resetForm();
         },
     });
 };
 
 const handleEdit = (task: Task) => {
+    editingTask.value = task;
     isEditDialogOpen.value = true;
     form.id = task.id;
     form.title = task.title;
@@ -129,14 +140,17 @@ const handleEdit = (task: Task) => {
     form.priority = task.priority;
     form.completed = task.completed;
     form.todo_list_id = task.todo_list_id;
-    form.todo_list = task.todo_list;
+    form.assignee_id = task.assignee_id;
 };
 
 const handleUpdate = () => {
+    if (!editingTask.value) return;
+
     form.put(`/tasks/${form.id}`, {
         onSuccess: () => {
             isEditDialogOpen.value = false;
-            form.reset();
+            editingTask.value = null;
+            resetForm();
         },
     });
 };
@@ -165,15 +179,36 @@ const clearFilters = () => {
     priority.value = '';
     listId.value = '';
 };
+
+const handleDelete = (taskId: number) => {
+    deletingTask.value = taskId;
+    form.delete(`/tasks/${taskId}`, {
+        onSuccess: () => {
+            deletingTask.value = null;
+        },
+    });
+};
+
+const getPriorityClass = (priority: string) => {
+    switch (priority) {
+        case 'low':
+            return 'bg-green-500 text-white';
+        case 'medium':
+            return 'bg-yellow-500 text-white';
+        case 'high':
+            return 'bg-red-500 text-white';
+        default:
+            return 'bg-gray-500 text-white';
+    }
+};
 </script>
 
 <template>
     <AppLayout :breadcrumbs="breadcrumbs">
         <Head title="Tasks" />
 
-        <div
-            class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
-        >
+        <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
+            <!-- Filters Card -->
             <Card>
                 <CardHeader>
                     <div class="flex items-center justify-between">
@@ -205,9 +240,9 @@ const clearFilters = () => {
                             <select
                                 id="listId"
                                 v-model="listId"
-                                class="w-full rounded-md border border-gray-300 p-2"
+                                class="w-full rounded-md border border-input bg-background px-3 py-2"
                             >
-                                <option value="">Select List</option>
+                                <option value="">All Lists</option>
                                 <option
                                     v-for="todoList in todoLists"
                                     :key="todoList.id"
@@ -216,83 +251,122 @@ const clearFilters = () => {
                                     {{ todoList.name }}
                                 </option>
                             </select>
-                            <InputError :message="form.errors.todo_list_id" />
                         </div>
                         <div class="space-y-2">
                             <Label for="priority">Priority</Label>
                             <select
                                 id="priority"
                                 v-model="priority"
-                                class="w-full rounded-md border border-gray-300 p-2"
+                                class="w-full rounded-md border border-input bg-background px-3 py-2"
                             >
-                                <option value="">Select Priority</option>
+                                <option value="">All Priorities</option>
                                 <option value="low">Low</option>
                                 <option value="medium">Medium</option>
                                 <option value="high">High</option>
                             </select>
-                            <InputError :message="form.errors.priority" />
                         </div>
                     </div>
                 </CardContent>
             </Card>
+
+            <!-- Header with Create Button -->
             <div class="flex items-center justify-between">
                 <h1 class="text-2xl font-bold">Tasks</h1>
                 <Dialog v-model:open="isCreateDialogOpen">
                     <DialogTrigger as-child>
-                        <Button
-                            ><Plus class="mr-2 h-4 w-4 text-white" /> Create
-                            Task</Button
-                        >
+                        <Button>
+                            <Plus class="mr-2 h-4 w-4" />
+                            Create Task
+                        </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent class="sm:max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Create Task</DialogTitle>
                             <DialogDescription>
                                 Create a new task to add to your todo list
                             </DialogDescription>
                         </DialogHeader>
-                        <form @submit.prevent="handleCreate()">
-                            <div class="space-y-4 py-4">
-                                <div class="flex-1 space-y-2">
-                                    <Label for="todo_list_id">Todo List</Label>
-                                    <select
-                                        id="todo_list_id"
-                                        v-model="form.todo_list_id"
-                                        class="w-full rounded-md border border-gray-300 p-2"
-                                    >
-                                        <option value="">
-                                            Select Todo List
-                                        </option>
-                                        <option
-                                            v-for="todoList in todoLists"
-                                            :key="todoList.id"
-                                            :value="todoList.id"
+                        <form @submit.prevent="handleCreate">
+                            <div class="grid gap-4 py-4">
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="space-y-2">
+                                        <Label for="todo_list_id"
+                                            >Todo List</Label
                                         >
-                                            {{ todoList.name }}
-                                        </option>
-                                    </select>
-                                    <InputError
-                                        :message="form.errors.todo_list_id"
-                                    />
+                                        <select
+                                            id="todo_list_id"
+                                            v-model="form.todo_list_id"
+                                            class="w-full rounded-md border border-input bg-background px-3 py-2"
+                                            required
+                                        >
+                                            <option value="">
+                                                Select Todo List
+                                            </option>
+                                            <option
+                                                v-for="todoList in todoLists"
+                                                :key="todoList.id"
+                                                :value="todoList.id"
+                                            >
+                                                {{ todoList.name }}
+                                            </option>
+                                        </select>
+                                        <InputError
+                                            :message="form.errors.todo_list_id"
+                                        />
+                                    </div>
+                                    <div class="space-y-2">
+                                        <Label for="assignee_id"
+                                            >Assignee</Label
+                                        >
+                                        <select
+                                            id="assignee_id"
+                                            v-model="form.assignee_id"
+                                            class="w-full rounded-md border border-input bg-background px-3 py-2"
+                                        >
+                                            <option :value="null">
+                                                Unassigned
+                                            </option>
+                                            <option
+                                                v-for="user in assignees"
+                                                :key="user.id"
+                                                :value="user.id"
+                                            >
+                                                {{ user.name }}
+                                            </option>
+                                        </select>
+                                        <InputError
+                                            :message="form.errors.assignee_id"
+                                        />
+                                    </div>
                                 </div>
 
-                                <div class="space-y-2">
-                                    <Label for="priority">Priority</Label>
-                                    <select
-                                        id="priority"
-                                        v-model="form.priority"
-                                        class="w-full rounded-md border border-gray-300 p-2"
-                                    >
-                                        <option value="">
-                                            Select Priority
-                                        </option>
-                                        <option value="low">Low</option>
-                                        <option value="medium">Medium</option>
-                                        <option value="high">High</option>
-                                    </select>
-                                    <InputError
-                                        :message="form.errors.priority"
-                                    />
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="space-y-2">
+                                        <Label for="priority">Priority</Label>
+                                        <select
+                                            id="priority"
+                                            v-model="form.priority"
+                                            class="w-full rounded-md border border-input bg-background px-3 py-2"
+                                        >
+                                            <option value="low">Low</option>
+                                            <option value="medium">
+                                                Medium
+                                            </option>
+                                            <option value="high">High</option>
+                                        </select>
+                                        <InputError
+                                            :message="form.errors.priority"
+                                        />
+                                    </div>
+                                    <div class="space-y-2">
+                                        <Label for="completed">Completed</Label>
+                                        <div class="flex h-10 items-center">
+                                            <Checkbox
+                                                id="completed"
+                                                v-model="form.completed"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div class="space-y-2">
@@ -301,6 +375,7 @@ const clearFilters = () => {
                                         id="title"
                                         v-model="form.title"
                                         placeholder="Enter task title"
+                                        required
                                     />
                                     <InputError :message="form.errors.title" />
                                 </div>
@@ -310,15 +385,17 @@ const clearFilters = () => {
                                         id="description"
                                         v-model="form.description"
                                         placeholder="Enter task description"
+                                        rows="3"
                                     />
                                     <InputError
                                         :message="form.errors.description"
                                     />
                                 </div>
+                            </div>
+                            <DialogFooter>
                                 <Button
                                     type="submit"
                                     :disabled="form.processing"
-                                    variant="default"
                                 >
                                     <Loader2
                                         v-if="form.processing"
@@ -330,227 +407,412 @@ const clearFilters = () => {
                                             : 'Create Task'
                                     }}
                                 </Button>
-                            </div>
+                            </DialogFooter>
                         </form>
                     </DialogContent>
                 </Dialog>
             </div>
-            <div class="table-container">
-                <table class="w-full">
-                    <thead class="bg-gray-100">
-                        <tr class="text-left">
-                            <th class="px-4 py-2">#</th>
-                            <th class="px-4 py-2">Title</th>
-                            <th class="px-4 py-2">Description</th>
-                            <th class="px-4 py-2">Priority</th>
-                            <th class="px-4 py-2">List</th>
-                            <th class="px-4 py-2">Completed</th>
 
-                            <th class="px-4 py-2">Actions</th>
+            <!-- Tasks Table -->
+            <div class="overflow-x-auto rounded-md border">
+                <table class="w-full">
+                    <thead class="bg-muted/50">
+                        <tr class="text-left">
+                            <th class="px-4 py-3">#</th>
+                            <th class="px-4 py-3">Title</th>
+                            <th class="px-4 py-3">Description</th>
+                            <th class="px-4 py-3">Priority</th>
+                            <th class="px-4 py-3">List</th>
+                            <th class="px-4 py-3">Status</th>
+                            <th class="px-4 py-3">Assignee</th>
+                            <th class="px-4 py-3">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr
                             v-for="(task, index) in tasks.data"
                             :key="task.id"
-                            class="border-b border-gray-200"
+                            class="border-b border-border hover:bg-muted/50"
                         >
-                            <td class="px-4 py-2">{{ index + 1 }}</td>
-                            <td class="px-4 py-2">{{ task.title }}</td>
-                            <td class="px-4 py-2">{{ task.description }}</td>
-                            <td class="px-4 py-2">
-                                <badge
-                                    class="inline-flex w-20 items-center justify-center rounded-md px-2 py-1 text-center"
-                                    :class="
-                                        task.priority === 'low'
-                                            ? 'bg-green-500 text-white'
-                                            : task.priority === 'medium'
-                                              ? 'bg-yellow-500 text-white'
-                                              : 'bg-red-500 text-white'
-                                    "
-                                >
+                            <td class="px-4 py-3">{{ index + 1 }}</td>
+                            <td class="px-4 py-3 font-medium">
+                                {{ task.title }}
+                            </td>
+                            <td class="max-w-xs truncate px-4 py-3">
+                                {{ task.description }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <Badge :class="getPriorityClass(task.priority)">
                                     {{
                                         task.priority.charAt(0).toUpperCase() +
                                         task.priority.slice(1)
                                     }}
-                                </badge>
+                                </Badge>
                             </td>
-                            <td class="px-4 py-2">
-                                {{ task.todo_list.name }}
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <span
+                                        class="h-3 w-3 rounded-full"
+                                        :style="{
+                                            backgroundColor:
+                                                task.todo_list.color ||
+                                                '#6366f1',
+                                        }"
+                                    />
+                                    {{ task.todo_list.name }}
+                                </div>
                             </td>
-                            <td class="px-4 py-2">
-                                {{ task.completed ? 'Yes' : 'No' }}
+                            <td class="px-4 py-3">
+                                <Badge
+                                    :variant="
+                                        task.completed ? 'default' : 'outline'
+                                    "
+                                >
+                                    {{
+                                        task.completed ? 'Completed' : 'Pending'
+                                    }}
+                                </Badge>
                             </td>
-                            <td class="px-4 py-2">
-                                <Dialog v-model:open="isEditDialogOpen">
-                                    <DialogTrigger as-child>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            class="mr-2"
-                                            @click="handleEdit(task)"
-                                        >
-                                            <Pencil class="h-4 w-4" /> Edit
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader>
-                                            <DialogTitle>Edit Task</DialogTitle>
-                                            <DialogDescription>
-                                                Edit the task details
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <form
-                                            @submit.prevent="handleUpdate(task)"
-                                        >
-                                            <div class="space-y-4 py-4">
-                                                <div class="space-y-2">
-                                                    <Label for="title"
-                                                        >Task Title</Label
+                            <td class="px-4 py-3">
+                                {{ task.assignee?.name || 'Unassigned' }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex gap-2">
+                                    <!-- Edit Dialog -->
+                                    <Dialog v-model:open="isEditDialogOpen">
+                                        <DialogTrigger as-child>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                @click="handleEdit(task)"
+                                            >
+                                                <Pencil class="h-4 w-4" />
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent class="sm:max-w-2xl">
+                                            <DialogHeader>
+                                                <DialogTitle
+                                                    >Edit Task</DialogTitle
+                                                >
+                                                <DialogDescription>
+                                                    Edit the task details
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <form
+                                                @submit.prevent="handleUpdate"
+                                            >
+                                                <div class="grid gap-4 py-4">
+                                                    <div
+                                                        class="grid grid-cols-2 gap-4"
                                                     >
-                                                    <Input
-                                                        id="title"
-                                                        v-model="form.title"
-                                                        placeholder="Enter task title"
-                                                    />
-                                                    <InputError
-                                                        :message="
-                                                            form.errors.title
-                                                        "
-                                                    />
+                                                        <div class="space-y-2">
+                                                            <Label
+                                                                for="edit_todo_list_id"
+                                                                >Todo
+                                                                List</Label
+                                                            >
+                                                            <select
+                                                                id="edit_todo_list_id"
+                                                                v-model="
+                                                                    form.todo_list_id
+                                                                "
+                                                                class="w-full rounded-md border border-input bg-background px-3 py-2"
+                                                                required
+                                                            >
+                                                                <option
+                                                                    value=""
+                                                                >
+                                                                    Select Todo
+                                                                    List
+                                                                </option>
+                                                                <option
+                                                                    v-for="todoList in todoLists"
+                                                                    :key="
+                                                                        todoList.id
+                                                                    "
+                                                                    :value="
+                                                                        todoList.id
+                                                                    "
+                                                                >
+                                                                    {{
+                                                                        todoList.name
+                                                                    }}
+                                                                </option>
+                                                            </select>
+                                                            <InputError
+                                                                :message="
+                                                                    form.errors
+                                                                        .todo_list_id
+                                                                "
+                                                            />
+                                                        </div>
+                                                        <div class="space-y-2">
+                                                            <Label
+                                                                for="edit_assignee_id"
+                                                                >Assignee</Label
+                                                            >
+                                                            <select
+                                                                id="edit_assignee_id"
+                                                                v-model="
+                                                                    form.assignee_id
+                                                                "
+                                                                class="w-full rounded-md border border-input bg-background px-3 py-2"
+                                                            >
+                                                                <option
+                                                                    :value="
+                                                                        null
+                                                                    "
+                                                                >
+                                                                    Unassigned
+                                                                </option>
+                                                                <option
+                                                                    v-for="user in assignees"
+                                                                    :key="
+                                                                        user.id
+                                                                    "
+                                                                    :value="
+                                                                        user.id
+                                                                    "
+                                                                >
+                                                                    {{
+                                                                        user.name
+                                                                    }}
+                                                                </option>
+                                                            </select>
+                                                            <InputError
+                                                                :message="
+                                                                    form.errors
+                                                                        .assignee_id
+                                                                "
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div
+                                                        class="grid grid-cols-2 gap-4"
+                                                    >
+                                                        <div class="space-y-2">
+                                                            <Label
+                                                                for="edit_priority"
+                                                                >Priority</Label
+                                                            >
+                                                            <select
+                                                                id="edit_priority"
+                                                                v-model="
+                                                                    form.priority
+                                                                "
+                                                                class="w-full rounded-md border border-input bg-background px-3 py-2"
+                                                            >
+                                                                <option
+                                                                    value="low"
+                                                                >
+                                                                    Low
+                                                                </option>
+                                                                <option
+                                                                    value="medium"
+                                                                >
+                                                                    Medium
+                                                                </option>
+                                                                <option
+                                                                    value="high"
+                                                                >
+                                                                    High
+                                                                </option>
+                                                            </select>
+                                                            <InputError
+                                                                :message="
+                                                                    form.errors
+                                                                        .priority
+                                                                "
+                                                            />
+                                                        </div>
+                                                        <div class="space-y-2">
+                                                            <Label
+                                                                for="edit_completed"
+                                                                >Completed</Label
+                                                            >
+                                                            <div
+                                                                class="flex h-10 items-center"
+                                                            >
+                                                                <Checkbox
+                                                                    id="edit_completed"
+                                                                    v-model="
+                                                                        form.completed
+                                                                    "
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="space-y-2">
+                                                        <Label for="edit_title"
+                                                            >Task Title</Label
+                                                        >
+                                                        <Input
+                                                            id="edit_title"
+                                                            v-model="form.title"
+                                                            placeholder="Enter task title"
+                                                            required
+                                                        />
+                                                        <InputError
+                                                            :message="
+                                                                form.errors
+                                                                    .title
+                                                            "
+                                                        />
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label
+                                                            for="edit_description"
+                                                            >Description</Label
+                                                        >
+                                                        <Textarea
+                                                            id="edit_description"
+                                                            v-model="
+                                                                form.description
+                                                            "
+                                                            placeholder="Enter task description"
+                                                            rows="3"
+                                                        />
+                                                        <InputError
+                                                            :message="
+                                                                form.errors
+                                                                    .description
+                                                            "
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <div class="space-y-2">
-                                                    <Label for="description"
-                                                        >Description</Label
-                                                    >
-                                                    <Textarea
-                                                        id="description"
-                                                        v-model="
-                                                            form.description
+                                                <DialogFooter>
+                                                    <Button
+                                                        type="submit"
+                                                        :disabled="
+                                                            form.processing
                                                         "
-                                                        placeholder="Enter task description"
-                                                    />
-                                                    <InputError
-                                                        :message="
-                                                            form.errors
-                                                                .description
-                                                        "
-                                                    />
-                                                </div>
-                                                <div class="space-y-2">
-                                                    <Label for="priority"
-                                                        >Priority</Label
                                                     >
-                                                    <select
-                                                        id="priority"
-                                                        v-model="form.priority"
-                                                        class="w-full rounded-md border border-gray-300 p-2"
-                                                    >
-                                                        <option value="">
-                                                            Select Priority
-                                                        </option>
-                                                        <option value="low">
-                                                            Low
-                                                        </option>
-                                                        <option value="medium">
-                                                            Medium
-                                                        </option>
-                                                        <option value="high">
-                                                            High
-                                                        </option>
-                                                    </select>
-                                                    <InputError
-                                                        :message="
-                                                            form.errors.priority
-                                                        "
-                                                    />
-                                                </div>
-                                                <div class="space-y-2">
-                                                    <Label for="completed"
-                                                        >Completed</Label
-                                                    >
-                                                    <Checkbox
-                                                        id="completed"
-                                                        v-model="form.completed"
-                                                    />
-                                                    <InputError
-                                                        :message="
-                                                            form.errors
-                                                                .completed
-                                                        "
-                                                    />
-                                                </div>
-                                                <Button
-                                                    type="submit"
-                                                    :disabled="form.processing"
-                                                    variant="default"
+                                                        <Loader2
+                                                            v-if="
+                                                                form.processing
+                                                            "
+                                                            class="mr-2 h-4 w-4 animate-spin"
+                                                        />
+                                                        {{
+                                                            form.processing
+                                                                ? 'Updating...'
+                                                                : 'Update Task'
+                                                        }}
+                                                    </Button>
+                                                </DialogFooter>
+                                            </form>
+                                        </DialogContent>
+                                    </Dialog>
+
+                                    <!-- Delete Alert Dialog -->
+                                    <AlertDialog>
+                                        <AlertDialogTrigger as-child>
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                            >
+                                                <Trash2 class="h-4 w-4" />
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle
+                                                    >Are you
+                                                    sure?</AlertDialogTitle
+                                                >
+                                                <AlertDialogDescription>
+                                                    This action cannot be
+                                                    undone. This will
+                                                    permanently delete "{{
+                                                        task.title
+                                                    }}".
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel
+                                                    >Cancel</AlertDialogCancel
+                                                >
+                                                <AlertDialogAction
+                                                    @click="
+                                                        handleDelete(task.id)
+                                                    "
+                                                    :disabled="
+                                                        deletingTask === task.id
+                                                    "
                                                 >
                                                     <Loader2
-                                                        v-if="form.processing"
+                                                        v-if="
+                                                            deletingTask ===
+                                                            task.id
+                                                        "
                                                         class="mr-2 h-4 w-4 animate-spin"
                                                     />
                                                     {{
-                                                        form.processing
-                                                            ? 'Updating...'
-                                                            : 'Update Task'
+                                                        deletingTask === task.id
+                                                            ? 'Deleting...'
+                                                            : 'Delete'
                                                     }}
-                                                </Button>
-                                            </div>
-                                        </form>
-                                    </DialogContent>
-                                </Dialog>
-
-                                <Button variant="outline" size="sm">
-                                    <Trash2 class="h-4 w-4" /> Delete
-                                </Button>
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr v-if="tasks.data.length === 0">
+                            <td
+                                colspan="8"
+                                class="px-4 py-8 text-center text-muted-foreground"
+                            >
+                                No tasks found. Create your first task to get
+                                started!
                             </td>
                         </tr>
                     </tbody>
                 </table>
-                <!-- pagination links -->
-                <div class="mt-4 flex items-center justify-between">
-                    <p class="text-sm text-muted-foreground">
-                        Showing {{ tasks.data.length }} of
-                        {{ tasks.total }} tasks
-                    </p>
-                    <div class="flex items-center gap-2">
-                        <template
-                            v-for="(link, index) in tasks.links"
-                            :key="index"
+            </div>
+
+            <!-- Pagination -->
+            <div class="mt-4 flex items-center justify-between">
+                <p class="text-sm text-muted-foreground">
+                    Showing {{ tasks.data.length }} of {{ tasks.total }} tasks
+                </p>
+                <div class="flex items-center gap-2">
+                    <template v-for="(link, index) in tasks.links" :key="index">
+                        <Link
+                            v-if="link.url"
+                            :href="link.url"
+                            class="rounded-md px-3 py-1 text-sm font-medium"
+                            :class="[
+                                link.active
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'bg-transparent text-muted-foreground hover:bg-accent',
+                            ]"
+                            preserve-scroll
                         >
-                            <Link
-                                v-if="link.url"
-                                :href="link.url"
-                                class="rounded-md px-3 py-1 text-sm font-medium"
-                                :class="[
-                                    link.active
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                                ]"
-                                preserve-scroll
-                            >
-                                <span v-if="link.label.includes('Previous')">
-                                    <ChevronLeft class="h-4 w-4" />
-                                </span>
-                                <span v-else-if="link.label.includes('Next')">
-                                    <ChevronRight class="h-4 w-4" />
-                                </span>
-                                <span v-else v-html="link.label" />
-                            </Link>
-                            <span
-                                v-else
-                                class="rounded-md px-3 py-1 text-sm font-medium text-muted-foreground opacity-50"
-                            >
-                                <span v-if="link.label.includes('Previous')">
-                                    <ChevronLeft class="h-4 w-4" />
-                                </span>
-                                <span v-else-if="link.label.includes('Next')">
-                                    <ChevronRight class="h-4 w-4" />
-                                </span>
-                                <span v-else v-html="link.label" />
+                            <span v-if="link.label.includes('Previous')">
+                                <ChevronLeft class="h-4 w-4" />
                             </span>
-                        </template>
-                    </div>
+                            <span v-else-if="link.label.includes('Next')">
+                                <ChevronRight class="h-4 w-4" />
+                            </span>
+                            <span v-else v-html="link.label" />
+                        </Link>
+                        <span
+                            v-else
+                            class="rounded-md px-3 py-1 text-sm font-medium text-muted-foreground opacity-50"
+                        >
+                            <span v-if="link.label.includes('Previous')">
+                                <ChevronLeft class="h-4 w-4" />
+                            </span>
+                            <span v-else-if="link.label.includes('Next')">
+                                <ChevronRight class="h-4 w-4" />
+                            </span>
+                            <span v-else v-html="link.label" />
+                        </span>
+                    </template>
                 </div>
             </div>
         </div>
