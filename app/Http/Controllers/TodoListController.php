@@ -41,7 +41,8 @@ class TodoListController extends Controller
 
     public function show(TodoList $todoList)
     {
-        $tasks = Task::where('todo_list_id', $todoList->id)->get();
+
+        $tasks = Task::with('assignee')->where('todo_list_id', $todoList->id)->get();
         return Inertia::render('TodoLists/Show', [
             'todoList' => $todoList,
             'tasks' => $tasks,

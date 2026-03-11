@@ -1,19 +1,8 @@
 <script setup lang="ts">
-import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-    DialogTrigger,
-} from '@/components/ui/dialog';
+import { Pencil, Trash2, Plus } from 'lucide-vue-next';
+import { ref } from 'vue';
+
 import {
     AlertDialog,
     AlertDialogContent,
@@ -25,75 +14,45 @@ import {
     AlertDialogCancel,
     AlertDialogAction,
 } from '@/components/ui/alert-dialog';
-
-import InputError from '@/components/InputError.vue';
-import { type BreadcrumbItem } from '@/types';
-import { dashboard } from '@/routes';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-    Plus,
-    Pencil,
-    Trash2,
-    ExternalLink,
-    Loader2,
-    Eye,
-} from 'lucide-vue-next';
-import { ref } from 'vue';
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import AppLayout from '@/layouts/AppLayout.vue';
+import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Dashboard', href: dashboard() },
+    { title: 'Dashboard', href: '/dashboard' },
     { title: 'Todo Lists', href: '/todo-lists' },
 ];
 
-interface User {
-    id: number;
-    name: string;
-    email: string;
-}
-
-interface List {
+interface TodoList {
     id: number;
     name: string;
     color: string;
-}
-
-interface TodoLists {
-    id: number;
-    name: string;
-    color?: string;
     tasks_count?: number;
     created_at: string;
 }
 
-const props = defineProps({
-    todoLists: {
-        type: Array<TodoLists>,
-        required: true,
-    },
-    users: {
-        type: Array<User>,
-        required: true,
-    },
-});
-
-const colors = [
-    '#6366f1',
-    '#ef4444',
-    '#10b981',
-    '#f59e0b',
-    '#8b5cf6',
-    '#ec4899',
-];
+const props = defineProps<{
+    todoLists: TodoList[];
+}>();
 
 const isCreateDialogOpen = ref(false);
 const isEditDialogOpen = ref(false);
+const deletingList = ref<number | null>(null);
+const editingList = ref<TodoList | null>(null);
 
-const editingList = ref<{ id: number; name: string; color: string } | null>(
-    null,
-);
-const deletingList = ref<{ id: number } | null>(null);
-
-const form = useForm<List>({
-    id: 0,
+const form = useForm({
     name: '',
     color: '#6366f1',
 });
@@ -107,39 +66,36 @@ const handleCreate = () => {
     });
 };
 
-const handleEdit = (todoList: TodoLists) => {
+const handleEdit = (list: TodoList) => {
+    editingList.value = list;
     isEditDialogOpen.value = true;
-    form.id = todoList.id;
-    form.name = todoList.name;
-    form.color = todoList.color || '#6366f1';
+    form.name = list.name;
+    form.color = list.color;
 };
 
 const handleUpdate = () => {
-    const id = form.id as number;
-    form.put(`/todo-lists/${id}`, {
+    if (!editingList.value) return;
+
+    form.put(`/todo-lists/${editingList.value.id}`, {
         onSuccess: () => {
             isEditDialogOpen.value = false;
+            editingList.value = null;
             form.reset();
         },
     });
 };
 
-const handleDelete = (todoList: TodoLists) => {
-    deletingList.value = { id: todoList.id };
-    form.delete(`/todo-lists/${todoList.id}`, {
+const handleDelete = (id: number) => {
+    deletingList.value = id;
+    form.delete(`/todo-lists/${id}`, {
         onSuccess: () => {
             deletingList.value = null;
-            form.reset();
         },
     });
 };
 
-const handleView = (todoList: TodoLists) => {
-    router.get(`/todo-lists/${todoList.id}`, {
-        preserveScroll: true,
-        preserveState: true,
-        replace: true,
-    });
+const handleViewTasks = (id: number) => {
+    router.get(`/todo-lists/${id}`);
 };
 </script>
 
@@ -147,9 +103,7 @@ const handleView = (todoList: TodoLists) => {
     <AppLayout :breadcrumbs="breadcrumbs">
         <Head title="Todo Lists" />
 
-        <div
-            class="flex h-full flex-1 flex-col gap-4 overflow-x-auto rounded-xl p-4"
-        >
+        <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <div class="flex items-center justify-between">
                 <h1 class="text-2xl font-bold">Todo Lists</h1>
                 <Dialog v-model:open="isCreateDialogOpen">
@@ -160,7 +114,7 @@ const handleView = (todoList: TodoLists) => {
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Create New List</DialogTitle>
+                            <DialogTitle>Create Todo List</DialogTitle>
                             <DialogDescription>
                                 Create a new todo list to organize your tasks
                             </DialogDescription>
@@ -173,201 +127,169 @@ const handleView = (todoList: TodoLists) => {
                                         id="name"
                                         v-model="form.name"
                                         placeholder="Enter list name"
+                                        required
                                     />
-                                    <InputError :message="form.errors.name" />
                                 </div>
-
                                 <div class="space-y-2">
-                                    <Label for="color">List Color</Label>
-                                    <Input
-                                        id="color"
-                                        v-model="form.color"
-                                        type="color"
-                                        class="h-10 w-full"
-                                    />
-                                    <InputError :message="form.errors.color" />
-                                    <div class="mt-2 flex items-center gap-2">
-                                        <div
-                                            v-for="color in colors"
-                                            :key="color"
-                                            class="h-8 w-8 cursor-pointer rounded-full transition-all hover:scale-110"
-                                            :class="{
-                                                'ring-2 ring-primary ring-offset-2':
-                                                    color === form.color,
-                                            }"
-                                            :style="{ backgroundColor: color }"
-                                            @click="form.color = color"
-                                        ></div>
+                                    <Label for="color">Color</Label>
+                                    <div class="flex gap-2">
+                                        <Input
+                                            id="color"
+                                            type="color"
+                                            v-model="form.color"
+                                            class="w-20"
+                                        />
+                                        <Input
+                                            v-model="form.color"
+                                            placeholder="#6366f1"
+                                            class="flex-1"
+                                        />
                                     </div>
                                 </div>
-                            </div>
-                            <DialogFooter>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    @click="isCreateDialogOpen = false"
-                                >
-                                    Cancel
-                                </Button>
                                 <Button
                                     type="submit"
-                                    variant="default"
                                     :disabled="form.processing"
                                 >
-                                    <Loader2
-                                        v-if="form.processing"
-                                        class="mr-2 h-4 w-4 animate-spin"
-                                    />
                                     {{
                                         form.processing
                                             ? 'Creating...'
                                             : 'Create List'
                                     }}
                                 </Button>
-                            </DialogFooter>
+                            </div>
                         </form>
                     </DialogContent>
                 </Dialog>
             </div>
 
-            <!-- Todo Lists Grid - You can add this section to display the lists -->
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <Card v-for="todoList in todoLists" :key="todoList.id">
+                <Card v-for="list in todoLists" :key="list.id">
                     <CardHeader>
                         <CardTitle class="flex items-center justify-between">
-                            <Link :href="`/tasks?listId=${todoList.id}`">
-                                <span>{{ todoList.name }}</span></Link
-                            >
-
-                            <div class="flex items-center gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    @click="handleView(todoList)"
-                                >
-                                    <Eye class="h-4 w-4" />
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    @click="handleEdit(todoList)"
-                                >
-                                    <Pencil class="h-4 w-4" />
-                                </Button>
-
-                                <AlertDialog>
-                                    <AlertDialogTrigger as-child>
-                                        <Button variant="outline" size="icon">
-                                            <Trash2 class="h-4 w-4" />
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle
-                                                >Are you sure?</AlertDialogTitle
-                                            >
-                                            <AlertDialogDescription>
-                                                This action cannot be undone.
-                                                This will permanently delete "{{
-                                                    todoList.name
-                                                }}" and all its tasks.
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel
-                                                >Cancel</AlertDialogCancel
-                                            >
-                                            <AlertDialogAction
-                                                @click="handleDelete(todoList)"
-                                                :disabled="
-                                                    deletingList?.id ===
-                                                    todoList.id
-                                                "
-                                            >
-                                                <Loader2
-                                                    v-if="
-                                                        deletingList?.id ===
-                                                        todoList.id
-                                                    "
-                                                    class="mr-2 h-4 w-4 animate-spin"
-                                                />
-                                                {{
-                                                    deletingList?.id ===
-                                                    todoList.id
-                                                        ? 'Deleting...'
-                                                        : 'Delete'
-                                                }}
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            </div>
+                            <span class="flex items-center gap-2">
+                                <span
+                                    class="h-4 w-4 rounded-full"
+                                    :style="{ backgroundColor: list.color }"
+                                />
+                                {{ list.name }}
+                            </span>
+                            <Badge>{{ list.tasks_count || 0 }} tasks</Badge>
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div
-                            :style="{
-                                backgroundColor: todoList.color || '#6366f1',
-                            }"
-                            class="h-4 rounded-full"
-                        ></div>
-                        <p class="text-sm text-muted-foreground">
-                            {{ todoList.tasks_count || 0 }} tasks
-                        </p>
+                        <div class="flex justify-end gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                @click="handleViewTasks(list.id)"
+                            >
+                                <List class="h-4 w-4" />
+                                View Tasks
+                            </Button>
+                            <Dialog v-model:open="isEditDialogOpen">
+                                <DialogTrigger as-child>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        @click="handleEdit(list)"
+                                    >
+                                        <Pencil class="h-4 w-4" />
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle
+                                            >Edit Todo List</DialogTitle
+                                        >
+                                        <DialogDescription>
+                                            Edit your todo list
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <form @submit.prevent="handleUpdate">
+                                        <div class="space-y-4 py-4">
+                                            <div class="space-y-2">
+                                                <Label for="edit-name"
+                                                    >List Name</Label
+                                                >
+                                                <Input
+                                                    id="edit-name"
+                                                    v-model="form.name"
+                                                    placeholder="Enter list name"
+                                                    required
+                                                />
+                                            </div>
+                                            <div class="space-y-2">
+                                                <Label for="edit-color"
+                                                    >Color</Label
+                                                >
+                                                <div class="flex gap-2">
+                                                    <Input
+                                                        id="edit-color"
+                                                        type="color"
+                                                        v-model="form.color"
+                                                        class="w-20"
+                                                    />
+                                                    <Input
+                                                        v-model="form.color"
+                                                        placeholder="#6366f1"
+                                                        class="flex-1"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <Button
+                                                type="submit"
+                                                :disabled="form.processing"
+                                            >
+                                                {{
+                                                    form.processing
+                                                        ? 'Updating...'
+                                                        : 'Update List'
+                                                }}
+                                            </Button>
+                                        </div>
+                                    </form>
+                                </DialogContent>
+                            </Dialog>
+
+                            <AlertDialog>
+                                <AlertDialogTrigger as-child>
+                                    <Button variant="destructive" size="sm">
+                                        <Trash2 class="h-4 w-4" />
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle
+                                            >Are you sure?</AlertDialogTitle
+                                        >
+                                        <AlertDialogDescription>
+                                            This action cannot be undone. This
+                                            will permanently delete "{{
+                                                list.name
+                                            }}" and all its tasks.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel
+                                            >Cancel</AlertDialogCancel
+                                        >
+                                        <AlertDialogAction
+                                            @click="handleDelete(list.id)"
+                                            :disabled="deletingList === list.id"
+                                        >
+                                            {{
+                                                deletingList === list.id
+                                                    ? 'Deleting...'
+                                                    : 'Delete'
+                                            }}
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
                     </CardContent>
                 </Card>
             </div>
         </div>
-
-        <Dialog v-model:open="isEditDialogOpen">
-            <DialogTrigger as-child> </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Edit List</DialogTitle>
-                    <DialogDescription>
-                        Edit the list name and color
-                    </DialogDescription>
-                </DialogHeader>
-                <form @submit.prevent="handleUpdate()">
-                    <div class="space-y-4 py-4">
-                        <div class="space-y-2">
-                            <Label for="title">List Name</Label>
-                            <Input
-                                id="name"
-                                v-model="form.name"
-                                placeholder="Enter list name"
-                            />
-                        </div>
-                        <div class="space-y-2">
-                            <Label for="color">List Color</Label>
-                            <Input
-                                id="color"
-                                v-model="form.color"
-                                type="color"
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            @click="isEditDialogOpen = false"
-                            >Cancel</Button
-                        >
-                    </DialogFooter>
-                    <Button
-                        type="submit"
-                        variant="default"
-                        :disabled="form.processing"
-                    >
-                        <Loader2
-                            v-if="form.processing"
-                            class="mr-2 h-4 w-4 animate-spin"
-                        />
-                        {{ form.processing ? 'Updating...' : 'Update List' }}
-                    </Button>
-                </form>
-            </DialogContent>
-        </Dialog>
     </AppLayout>
 </template>

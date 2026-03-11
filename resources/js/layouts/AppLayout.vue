@@ -1,7 +1,7 @@
 <script setup lang="ts">
+import MyFlash from '@/components/MyFlash.vue';
 import AppLayout from '@/layouts/app/AppSidebarLayout.vue';
 import type { BreadcrumbItem } from '@/types';
-import MyFlash from '@/components/MyFlash.vue';
 
 type Props = {
     breadcrumbs?: BreadcrumbItem[];
