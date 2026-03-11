@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, useForm, router } from '@inertiajs/vue3';
+import { Head, useForm, router } from '@inertiajs/vue3';
 import { Pencil, Trash2, Plus } from 'lucide-vue-next';
 import { ref } from 'vue';
 
@@ -43,6 +43,7 @@ interface TodoList {
     created_at: string;
 }
 
+// Props are used in the template
 const props = defineProps<{
     todoLists: TodoList[];
 }>();
@@ -95,7 +96,7 @@ const handleDelete = (id: number) => {
 };
 
 const handleViewTasks = (id: number) => {
-    router.get(`/todo-lists/${id}`);
+    router.visit(`/todo-lists/${id}`);
 };
 </script>
 
@@ -163,7 +164,7 @@ const handleViewTasks = (id: number) => {
             </div>
 
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <Card v-for="list in todoLists" :key="list.id">
+                <Card v-for="list in props.todoLists" :key="list.id">
                     <CardHeader>
                         <CardTitle class="flex items-center justify-between">
                             <span class="flex items-center gap-2">
@@ -183,7 +184,7 @@ const handleViewTasks = (id: number) => {
                                 size="sm"
                                 @click="handleViewTasks(list.id)"
                             >
-                                <List class="h-4 w-4" />
+                                <Eye class="h-4 w-4" />
                                 View Tasks
                             </Button>
                             <Dialog v-model:open="isEditDialogOpen">

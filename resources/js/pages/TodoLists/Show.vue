@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import { Pencil, Trash2 } from 'lucide-vue-next';
+import { Pencil } from 'lucide-vue-next';
 import type { PropType } from 'vue';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -35,6 +35,7 @@ interface Task {
     created_at: string;
 }
 
+// Props are used in the template, so we need to keep them
 const props = defineProps({
     todoList: {
         type: Object as PropType<TodoList>,
@@ -149,30 +150,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                                 }}
                             </td>
                             <td class="px-4 py-2">
-                                <!-- <div class="flex gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        as-child
-                                    >
-                                        <Link :href="`/tasks/${task.id}/edit`">
-                                            <Pencil class="h-4 w-4" />
-                                        </Link>
-                                    </Button>
-                                    <Button
-                                        variant="destructive"
-                                        size="sm"
-                                        as-child
-                                    >
-                                        <Link
-                                            :href="`/tasks/${task.id}`"
-                                            method="delete"
-                                            as="button"
-                                        >
-                                            <Trash2 class="h-4 w-4" />
-                                        </Link>
-                                    </Button>
-                                </div> -->
+                                <!-- Actions will be added here later -->
                             </td>
                         </tr>
                         <tr v-if="tasks.length === 0">
