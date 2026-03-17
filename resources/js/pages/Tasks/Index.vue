@@ -87,6 +87,19 @@ interface PaginatedTasks {
     links: PaginationLinks[];
 }
 
+interface Notification {
+    id: number;
+    message: string;
+    task_title: string;
+    task_description: string;
+    task_priority: string;
+    task_completed: boolean;
+    task_assignee_name: string;
+    task_assignee_email: string;
+    created_at: string;
+    read_at: string | null;
+}
+
 const props = defineProps<{
     tasks: PaginatedTasks;
     filters: {
@@ -96,7 +109,10 @@ const props = defineProps<{
     };
     todoLists: TodoList[];
     assignees: User[];
+    notifications: Notification[];
 }>();
+
+const displayNotifications = ref(false);
 
 const isCreateDialogOpen = ref(false);
 const isEditDialogOpen = ref(false);
@@ -201,12 +217,119 @@ const getPriorityClass = (priority: string) => {
             return 'bg-gray-500 text-white';
     }
 };
+
+const markAsRead = (notificationId: string) => {
+    router.post('/tasks/mark-as-read', {
+        notificationId,
+    });
+};
 </script>
 
 <template>
     <AppLayout :breadcrumbs="breadcrumbs">
         <Head title="Tasks" />
+        <Button
+            class="m-2 justify-end"
+            variant="outline"
+            @click="displayNotifications = !displayNotifications"
+        >
+            Show Notifications
+            <Badge v-if="notifications.length">
+                {{ notifications.length }}
+            </Badge>
+        </Button>
+        <div class="space-y-2">
+            <div v-if="displayNotifications">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Notifications</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div
+                            v-for="notification in notifications"
+                            :key="notification.id"
+                            class="flex items-center justify-between rounded-md border p-3"
+                        >
+                            <table
+                                class="w-full"
+                                cellpadding="0"
+                                cellspacing="0"
+                            >
+                                <tr class="border-b border-border">
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{ notification.task_title }}
+                                    </td>
 
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{ notification.task_description }}
+                                    </td>
+
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{ notification.task_priority }}
+                                    </td>
+
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{
+                                            notification.task_completed
+                                                ? 'Yes'
+                                                : 'No'
+                                        }}
+                                    </td>
+
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{ notification.task_assignee_name }}
+                                    </td>
+
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{ notification.task_assignee_email }}
+                                    </td>
+
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{ notification.created_at }}
+                                    </td>
+
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        {{ notification.read_at }}
+                                    </td>
+
+                                    <td
+                                        class="border border-l border-border px-4 py-3"
+                                    >
+                                        <Button
+                                            size="sm"
+                                            variant="default"
+                                            :class="
+                                                notification.read_at
+                                                    ? 'hidden'
+                                                    : ''
+                                            "
+                                            @click="markAsRead(notification.id)"
+                                            >Unread</Button
+                                        >
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        </div>
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <!-- Filters Card -->
             <Card>

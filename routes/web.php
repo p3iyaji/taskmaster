@@ -13,6 +13,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
     Route::resource('todo-lists', TodoListController::class);
     Route::resource('tasks', TaskController::class);
+
+    Route::post('/tasks/mark-as-read', [TaskController::class, 'markAsRead']);
 });
 
 require __DIR__ . '/settings.php';
